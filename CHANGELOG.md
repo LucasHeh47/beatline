@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Recorded instruments:** 128 real instruments (pianos, guitars, bass guitars, strings, brass, choir, woodwinds, organs and more) from the FluidR3 Mono SoundFont, in the browser, the Add menu and the chord tool. Each is loudness-matched, and harder notes sound brighter and louder.
+- **Recorded drum kits:** acoustic, rock, room, jazz and brush kits and real percussion, next to the electronic drums.
+- **Templates sound real:** Pop, Lo-fi, Hip-hop, Rock band and Singer-songwriter now use piano, electric piano, bass guitars, organ and a real drum kit. The Rock band template starts with drums and bass straight away.
+- **MIDI files keep their instruments:** imported tracks play the instrument the file names (drums on a drum kit), and exported patterns say which instrument each track is.
+- **Recording keeps going:** the playhead used to stop at the end of the song (one bar into an empty one) while the recording carried on. Now it keeps moving, the take grows on its track with its waveform as you play, and the view follows it.
+- **Metronome while recording:** clicks all the way through a take (on by default, in the Recording panel), not just during the count-in.
+- **Count-in countdown** in the transport, and notes played on a MIDI keyboard keep how hard they were played.
+
 ## 0.1.0
 
 The first version of Beatline: make beats, write songs and record your guitar.

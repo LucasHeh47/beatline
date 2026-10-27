@@ -78,7 +78,22 @@ export interface SamplerParams {
   choke: number;
 }
 
-export type ChannelKind = 'sampler' | 'synth';
+/** A recorded instrument from the built-in library (a General MIDI SoundFont): piano, guitars, strings… */
+export interface InstrumentParams {
+  /** SoundFont bank (0 for instruments, 128 for drum kits) and program (General MIDI numbering, 0–127). */
+  bank: number;
+  program: number;
+  /** dB. */
+  gain: number;
+  /** Semitones. */
+  tune: number;
+  /** How long notes ring on after they end: 1 is as recorded, 0.25 shorter, 4 longer. */
+  release: number;
+  /** Lowpass filter (Hz): lower is darker, 20000 leaves the sound as it is. */
+  tone: number;
+}
+
+export type ChannelKind = 'sampler' | 'synth' | 'instrument';
 
 export interface Channel {
   id: string;
@@ -87,6 +102,7 @@ export interface Channel {
   kind: ChannelKind;
   sampler?: SamplerParams;
   synth?: SynthParams;
+  instrument?: InstrumentParams;
   /** The preset or sound it started from (shown in the instrument panel). */
   preset?: string;
   /** dB. */
@@ -276,6 +292,8 @@ export const DEFAULT_SYNTH: SynthParams = {
   mono: false,
   gain: -6,
 };
+
+export const DEFAULT_INSTRUMENT: InstrumentParams = { bank: 0, program: 0, gain: 0, tune: 0, release: 1, tone: 20000 };
 
 export const DEFAULT_SAMPLER: SamplerParams = { sample: { builtin: 'kick808' }, root: 60, tune: 0, pitched: false, attack: 0, release: 0.05, gain: 0, reverse: false, start: 0, choke: 0 };
 

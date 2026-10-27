@@ -2,7 +2,7 @@
 // chords already playing), and setups for recording a band or a singer-songwriter.
 import { addClip, patternClip } from './arrange';
 import { CHAIN_PRESETS, makeEffect } from './effects';
-import { drumSampler, drumById, synthPreset } from './instruments';
+import { ACOUSTIC_FOR, drumSampler, drumById, gmInstrument, instrumentParams, synthPreset } from './instruments';
 import { stepsFromString } from './notes';
 import { drumPatternById } from './drumPatterns';
 import { addAudioTrack, addChannel, barTicks, mixerById, newPattern, newProject, PPQ, type Channel, type Note, type Pattern, type Project } from './project';
@@ -34,12 +34,24 @@ export function synthChannel(p: Project, presetId: string, name?: string): Chann
   return addChannel(p, { name: name ?? pre.name, kind: 'synth', synth: structuredClone(pre.params), preset: pre.id });
 }
 
-/** Writes a ready-made beat into a pattern (adding the drum channels it needs). Returns false if unknown. */
-export function applyDrumPattern(p: Project, pt: Pattern, id: string, setTempo = true): boolean {
+/** A recorded instrument from the library (General MIDI program number). */
+export function instrumentChannel(p: Project, program: number, name?: string): Channel {
+  const gm = gmInstrument(program);
+  return addChannel(p, { name: name ?? gm.name, kind: 'instrument', instrument: instrumentParams(gm.program), preset: `gm:${gm.program}` });
+}
+
+/** A synth preset by id, or a recorded instrument by program number. */
+const soundChannel = (p: Project, sound: string | number) => (typeof sound === 'number' ? instrumentChannel(p, sound) : synthChannel(p, sound));
+
+/**
+ * Writes a ready-made beat into a pattern (adding the drum channels it needs). With `acoustic`, a
+ * recorded drum kit plays it instead of the electronic sounds. Returns false if unknown.
+ */
+export function applyDrumPattern(p: Project, pt: Pattern, id: string, setTempo = true, acoustic = false): boolean {
   const d = drumPatternById(id);
   if (!d) return false;
   for (const row of d.rows) {
-    const ch = drumChannel(p, row.sound);
+    const ch = drumChannel(p, (acoustic && ACOUSTIC_FOR[row.sound]) || row.sound);
     pt.notes[ch.id] = stepsFromString(row.steps);
   }
   pt.length = Math.max(pt.length, 16 * (PPQ / 4));
@@ -70,28 +82,30 @@ function arrange(p: Project, plan: [Pattern, number, number, number][]): void {
 }
 
 /** A groove: drums, a bass line following the chords, and the chords. */
-function groove(name: string, o: { drums: string; key: number; scale: string; prog: string; bass: string; keys: string; style: 'block' | 'stabs' | 'arp'; sevenths?: boolean }): Project {
+function groove(name: string, o: { drums: string; key: number; scale: string; prog: string; bass: string | number; keys: string | number; style: 'block' | 'stabs' | 'arp'; sevenths?: boolean; acoustic?: boolean; intro?: boolean }): Project {
   const p = freshProject(name);
   p.key = { root: o.key, scale: o.scale };
   const drums = p.patterns[0];
   drums.name = 'Drums';
-  applyDrumPattern(p, drums, o.drums);
+  applyDrumPattern(p, drums, o.drums, true, o.acoustic);
   const prog = PROGRESSIONS.find((x) => x.id === o.prog)!;
   const chordNotes = progressionNotes(o.key, o.scale, prog, { beats: 4, sevenths: !!o.sevenths, style: o.style, octave: 4, bass: false });
-  const keys = synthChannel(p, o.keys);
+  const keys = soundChannel(p, o.keys);
   const chords = melodic(p, 'Chords', keys, chordNotes);
   // The bass plays each chord's root on the beat
-  const bassCh = synthChannel(p, o.bass);
+  const bassCh = soundChannel(p, o.bass);
   const bassNotes: Note[] = prog.degrees.flatMap((d, i) => {
     const root = chordOnDegree(o.key, o.scale, d, 3, 2)[0];
     return [0, 1, 2, 3].map((b) => ({ key: root, start: i * 4 * PPQ + b * PPQ, length: Math.round(PPQ * 0.8), vel: b === 0 ? 0.9 : 0.75 }));
   });
   const bass = melodic(p, 'Bass', bassCh, bassNotes);
   const bars = Math.max(1, chords.length / barTicks(p));
+  // The chords play alone first, then the drums and bass come in (or all start together)
+  const intro = o.intro === false ? 0 : bars;
   arrange(p, [
     [chords, 0, 0, bars * 3],
-    [drums, 1, bars, bars * 2],
-    [bass, 2, bars, bars * 2],
+    [drums, 1, intro, bars * 3 - intro],
+    [bass, 2, intro, bars * 3 - intro],
   ]);
   p.tracks[0].name = 'Chords';
   p.tracks[1].name = 'Drums';
@@ -112,17 +126,17 @@ export const TEMPLATES: Template[] = [
       return p;
     },
   },
-  { id: 'hiphop', name: 'Hip-hop', description: 'A boom-bap beat with electric piano and a sub bass, 90 BPM.', make: (n) => groove(n, { drums: 'boomBap', key: 9, scale: 'minor', prog: 'minorPop', bass: 'subBass', keys: 'ePiano', style: 'block', sevenths: true }) },
+  { id: 'hiphop', name: 'Hip-hop', description: 'A boom-bap beat with electric piano and a sub bass, 90 BPM.', make: (n) => groove(n, { drums: 'boomBap', key: 9, scale: 'minor', prog: 'minorPop', bass: 'subBass', keys: 4, style: 'block', sevenths: true }) },
   { id: 'trap', name: 'Trap', description: '808s, rolling hats and a dark bell melody, 140 BPM.', make: (n) => groove(n, { drums: 'trap', key: 5, scale: 'minor', prog: 'trap', bass: 'subBass', keys: 'bell', style: 'arp' }) },
   { id: 'house', name: 'House', description: 'Four on the floor, offbeat bass and stab chords, 124 BPM.', make: (n) => groove(n, { drums: 'fourFloor', key: 2, scale: 'minor', prog: 'minorPop', bass: 'pluckBass', keys: 'pad', style: 'stabs', sevenths: true }) },
-  { id: 'lofi', name: 'Lo-fi', description: 'Lazy swung drums under jazzy keys, 82 BPM.', make: (n) => groove(n, { drums: 'lofi', key: 0, scale: 'major', prog: 'jazz', bass: 'subBass', keys: 'ePiano', style: 'block', sevenths: true }) },
-  { id: 'pop', name: 'Pop', description: 'The four chords of a thousand songs with a pluck and drums, 110 BPM.', make: (n) => groove(n, { drums: 'rock', key: 7, scale: 'major', prog: 'pop', bass: 'pluckBass', keys: 'pluck', style: 'arp' }) },
+  { id: 'lofi', name: 'Lo-fi', description: 'Lazy swung drums under jazzy electric piano and an upright bass, 82 BPM.', make: (n) => groove(n, { drums: 'lofi', key: 0, scale: 'major', prog: 'jazz', bass: 32, keys: 4, style: 'block', sevenths: true }) },
+  { id: 'pop', name: 'Pop', description: 'The four chords of a thousand songs on piano, with bass guitar and a real drum kit, 110 BPM.', make: (n) => groove(n, { drums: 'rock', key: 7, scale: 'major', prog: 'pop', bass: 33, keys: 0, style: 'arp', acoustic: true }) },
   {
     id: 'band',
     name: 'Rock band',
     description: 'Drums and bass playing, with a guitar track (amp and effects) and a vocal track ready to record.',
     make: (name) => {
-      const p = groove(name, { drums: 'rock', key: 4, scale: 'minor', prog: 'minorPop', bass: 'pluckBass', keys: 'organ', style: 'block' });
+      const p = groove(name, { drums: 'rock', key: 4, scale: 'minor', prog: 'minorPop', bass: 34, keys: 18, style: 'block', acoustic: true, intro: false });
       // The organ makes way for the guitar: muted in the playlist, still there to try
       p.tracks[0].mute = true;
       setupRecording(p, [
@@ -139,7 +153,7 @@ export const TEMPLATES: Template[] = [
     make: (name) => {
       const p = freshProject(name);
       p.bpm = 90;
-      applyDrumPattern(p, p.patterns[0], 'halfTime', false);
+      applyDrumPattern(p, p.patterns[0], 'halfTime', false, true);
       p.patterns[0].name = 'Soft beat';
       setupRecording(p, [
         ['Guitar', 'acoustic'],

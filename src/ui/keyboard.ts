@@ -16,6 +16,8 @@ interface Held {
   channel: string;
   /** Pattern tick it started at (when recording). */
   start: number;
+  /** How hard it was played (0–1): a MIDI keyboard's velocity is kept in recordings. */
+  vel: number;
 }
 
 export class Keyboard {
@@ -72,7 +74,7 @@ export class Keyboard {
       return;
     }
     this.app.engine.noteOn(ch, key, vel);
-    this.held.set(id, { key, channel: ch, start: this.app.engine.position });
+    this.held.set(id, { key, channel: ch, start: this.app.engine.position, vel });
     this.app.emit('channel');
   }
 
@@ -95,7 +97,7 @@ export class Keyboard {
     let length = end - h.start;
     if (length <= 0) length += len;
     length = Math.max(grid === 1 ? STEP / 4 : STEP, Math.round(length / grid) * grid);
-    const note: Note = { key: h.key, start, length: Math.min(length, len), vel: 0.8 };
+    const note: Note = { key: h.key, start, length: Math.min(length, len), vel: Math.round(h.vel * 100) / 100 };
     this.session ??= app.liveEdit('Record notes');
     this.session.update((p) => {
       const x = p.patterns.find((y) => y.id === pt.id);

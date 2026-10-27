@@ -27,7 +27,8 @@ Beatline is a sister app of [Gridline](https://github.com/LucasHeh47/gridline), 
 **Making beats**
 
 - **Channel rack and step sequencer**: every sound is a row; click or drag across steps to switch them on, with **swing** and patterns from 1 to 8 bars. **Beats** fills in a ready-made groove: house, rock, boom bap, trap, lo-fi, reggaeton, funk, drum & bass, disco or half-time.
-- **24 built-in drum sounds**, made by Beatline itself: 808, punchy, lo-fi and house kicks, snares, claps, snaps, rimshots, open, closed and pedal hats, crash, ride, toms, shaker, tambourine, cowbell, conga, woodblock and an 808 bass.
+- **128 recorded instruments**: grand and electric pianos, organs, acoustic, electric and distorted guitars, bass guitars, strings, choir, brass, saxes, flutes, bells, world instruments and more (the General MIDI set, from the FluidR3 Mono SoundFont). Softer notes sound softer and darker, as on the real thing.
+- **Drums**: recorded acoustic, rock, room, jazz and brush kits and real percussion (congas, bongos, shaker, tambourine…), plus 24 electronic sounds made by Beatline itself: 808, punchy, lo-fi and house kicks, snares, claps, snaps, rimshots, hats, cymbals, toms, percussion and an 808 bass.
 - **Synths** with 14 presets (sub and Reese bass, pluck bass, saw and chip leads, supersaw, warm pad, strings, electric piano, organ, bells, plucks, brass) and every knob to make your own: two oscillators with unison and FM, noise, a filter with its envelope, the volume envelope, an LFO, glide and mono.
 - **Samplers**: drag any audio file onto the channel rack — a one-shot drum, or an instrument that follows the notes' pitch, with tuning, envelope, reverse and choke groups (an open hat stopped by the closed one).
 
@@ -77,3 +78,5 @@ See **[docs/development.md](docs/development.md)**.
 ## License
 
 [MIT](LICENSE)
+
+The instruments come from the **FluidR3 Mono** General MIDI SoundFont (FluidR3 by Frank Wen, mono version by Michael Cowgill, adapted by S. Christian Collins), also under the MIT license: see [public/soundfonts/LICENSE-FluidR3Mono.md](public/soundfonts/LICENSE-FluidR3Mono.md).

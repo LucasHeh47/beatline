@@ -1,8 +1,11 @@
 // The sounds the project uses, decoded and ready to play: built-in drums, imported samples and
-// recordings. Files load in the background; waveforms (peaks) are worked out for the playlist.
+// recordings, and the recorded instruments. Files load in the background; waveforms (peaks) are
+// worked out for the playlist.
+import { drumById } from '../core/instruments';
 import type { Project, Sample, SampleRef } from '../core/project';
 import { platform } from '../ui/platform';
 import { drumBuffer } from './drums';
+import { SoundFontBank } from './soundfont';
 
 export interface Peaks {
   /** Samples of audio per peak. */
@@ -20,8 +23,13 @@ export class SampleLibrary {
   /** Samples whose file couldn't be read. */
   readonly missing = new Set<string>();
   private listeners = new Set<() => void>();
+  /** The recorded instruments and drum kits. */
+  readonly sf: SoundFontBank;
 
-  constructor(private sampleRate: () => number, private decoder: () => BaseAudioContext) {}
+  constructor(private sampleRate: () => number, private decoder: () => BaseAudioContext) {
+    this.sf = new SoundFontBank(() => platform.readSoundFont(), decoder);
+    this.sf.onReady = () => this.changed();
+  }
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -54,7 +62,10 @@ export class SampleLibrary {
     if (have) return Promise.resolve(have);
     let p = this.loading.get(k);
     if (p) return p;
-    if (ref.builtin) p = drumBuffer(ref.builtin, this.sampleRate()) ?? Promise.resolve(null);
+    const kit = drumById(ref.builtin);
+    // Recorded drums come from the instrument library's kits
+    if (kit?.kit !== undefined && kit.key !== undefined) p = this.sf.renderHit(kit.kit, kit.key, this.sampleRate());
+    else if (ref.builtin) p = drumBuffer(ref.builtin, this.sampleRate()) ?? Promise.resolve(null);
     else {
       const s = project?.samples.find((x) => x.id === ref.sampleId);
       p = s ? this.decodeFile(s) : Promise.resolve(null);
@@ -99,7 +110,8 @@ export class SampleLibrary {
     const refs: SampleRef[] = [];
     for (const c of p.channels) if (c.kind === 'sampler' && c.sampler) refs.push(c.sampler.sample);
     for (const t of p.tracks) for (const c of t.clips) if (c.kind === 'audio' && c.sampleId) refs.push({ sampleId: c.sampleId });
-    await Promise.all(refs.map((r) => this.load(r, p)));
+    const instruments = p.channels.filter((c) => c.kind === 'instrument' && c.instrument).map((c) => this.sf.prepare(c.instrument!.bank, c.instrument!.program));
+    await Promise.all([...refs.map((r) => this.load(r, p)), ...instruments]);
   }
 
   /** Forgets a sample (relinked to another file). */

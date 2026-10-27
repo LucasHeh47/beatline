@@ -5,6 +5,10 @@ import { PPQ, type Note } from './project';
 export interface MidiTrack {
   name: string;
   notes: Note[];
+  /** The General MIDI instrument (program change), if the track says. */
+  program?: number;
+  /** Played on MIDI channel 10: drums, one sound per key. */
+  drums?: boolean;
 }
 
 function varLen(n: number): number[] {
@@ -32,8 +36,14 @@ export function writeMidi(tracks: MidiTrack[], bpm: number, beatsPerBar = 4, bea
     0, 0xff, 0x2f, 0,
   ];
   chunks.push([...ascii('MTrk'), ...u32(meta.length), ...meta]);
-  tracks.forEach((t, i) => {
-    const ch = i % 16 === 9 ? 15 : i % 16;
+  let next = 0;
+  tracks.forEach((t) => {
+    // Drums go on channel 10, the rest share the other fifteen
+    let ch = 9;
+    if (!t.drums) {
+      ch = next % 15 >= 9 ? (next % 15) + 1 : next % 15;
+      next++;
+    }
     const events: { t: number; on: boolean; key: number; vel: number }[] = [];
     for (const n of t.notes) {
       events.push({ t: n.start, on: true, key: n.key, vel: Math.max(1, Math.min(127, Math.round(n.vel * 127))) });
@@ -43,6 +53,7 @@ export function writeMidi(tracks: MidiTrack[], bpm: number, beatsPerBar = 4, bea
     events.sort((a, b) => a.t - b.t || Number(a.on) - Number(b.on));
     const name = ascii(t.name.slice(0, 60));
     const data: number[] = [0, 0xff, 0x03, ...varLen(name.length), ...name];
+    if (t.program !== undefined) data.push(0, 0xc0 | ch, Math.max(0, Math.min(127, Math.round(t.program))));
     let last = 0;
     for (const e of events) {
       data.push(...varLen(Math.max(0, e.t - last)), (e.on ? 0x90 : 0x80) | ch, e.key & 127, e.vel);
@@ -81,6 +92,8 @@ export function readMidi(data: Uint8Array): MidiFile {
     let tick = 0;
     let status = 0;
     let name = `Track ${t + 1}`;
+    let program: number | undefined;
+    let drums = false;
     const open = new Map<number, { start: number; vel: number }[]>();
     const notes: Note[] = [];
     const readVar = () => {
@@ -109,6 +122,7 @@ export function readMidi(data: Uint8Array): MidiFile {
       } else if (status === 0xf0 || status === 0xf7) {
         p += readVar();
       } else if (type === 0x90 || type === 0x80) {
+        if ((status & 0x0f) === 9) drums = true;
         const key = data[p++];
         const vel = data[p++];
         const at = Math.round(tick * scale);
@@ -120,10 +134,13 @@ export function readMidi(data: Uint8Array): MidiFile {
           const n = open.get(key)?.shift();
           if (n) notes.push({ key, start: n.start, length: Math.max(1, at - n.start), vel: n.vel });
         }
-      } else if (type === 0xc0 || type === 0xd0) p += 1;
+      } else if (type === 0xc0) {
+        program ??= data[p];
+        p += 1;
+      } else if (type === 0xd0) p += 1;
       else p += 2;
     }
-    if (notes.length) tracks.push({ name, notes: notes.sort((a, c) => a.start - c.start || a.key - c.key) });
+    if (notes.length) tracks.push({ name, notes: notes.sort((a, c) => a.start - c.start || a.key - c.key), ...(program !== undefined && !drums ? { program } : {}), ...(drums ? { drums } : {}) });
   }
   return { bpm, tracks };
 }

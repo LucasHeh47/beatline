@@ -27,6 +27,9 @@ export class AudioEngine {
   playing = false;
   mode: PlayMode = 'pattern';
   metronome = false;
+  /** Recording: the song keeps going past its end, and the metronome clicks (when `recordClick`). */
+  recording = false;
+  recordClick = true;
   /** Called when playback stops by itself. */
   onStop: (() => void) | null = null;
 
@@ -101,6 +104,18 @@ export class AudioEngine {
     if (!this.playing) return this.parked;
     const heard = this.ctx.currentTime - (this.ctx.outputLatency || this.ctx.baseLatency || 0);
     return this.tickAtElapsed(Math.max(0, this.elapsedAt(heard)));
+  }
+
+  /** Playing, but still in the count-in (the song hasn't started). */
+  get countingIn(): boolean {
+    return this.playing && this.ctx.currentTime < this.anchorTime;
+  }
+
+  /** Beats of the count-in still to come (0 once the song has started). */
+  get countInLeft(): number {
+    if (!this.countingIn) return 0;
+    const beat = this.secs((PPQ * 4) / this.project.beatUnit);
+    return Math.min(this.countInBeats, Math.ceil((this.anchorTime - this.ctx.currentTime) / beat - 1e-6));
   }
 
   /** Puts the playhead somewhere (while playing, playback continues from there). */
@@ -181,8 +196,8 @@ export class AudioEngine {
     const from = this.scheduled;
     const span = until - from;
     this.scheduled = until;
-    // Song mode without a loop stops at the end of the song
-    const end = this.mode === 'song' && !this.loop ? Math.max(songEnd(p), barTicks(p)) : Infinity;
+    // Song mode without a loop stops at the end of the song (not while recording: that makes it longer)
+    const end = this.mode === 'song' && !this.loop && !this.recording ? Math.max(songEnd(p), barTicks(p)) : Infinity;
     for (const w of loopWindows(this.tickAtElapsed(from), span, this.loop)) {
       const base = from + w.shift;
       const timeOf = (tick: number) => this.anchorTime + this.secs(base + (tick - w.start));
@@ -200,7 +215,7 @@ export class AudioEngine {
         const wrapped = w.shift > 0 && this.loop && w.start === this.loop[0];
         for (const ev of songAudio(p, w.start, Math.min(w.end, end), (t) => this.secs(t), wrapped ? w.start : undefined)) this.scheduleAudio(ev, timeOf(ev.at), ev.at);
       }
-      if (this.metronome) this.scheduleClicks(w.start, w.end, timeOf);
+      if (this.metronome || (this.recording && this.recordClick)) this.scheduleClicks(w.start, w.end, timeOf);
     }
     if (this.tickAtElapsed(this.elapsedAt(this.ctx.currentTime)) >= end) {
       this.stop(false);
@@ -238,10 +253,14 @@ export class AudioEngine {
     for (let t = Math.ceil(a / beat) * beat; t < b; t += beat) this.click(timeOf(t), t % bar === 0);
   }
 
+  /** Beats in the count-in that's playing. */
+  private countInBeats = 0;
+
   private countIn(bars: number): void {
     const p = this.project;
     const beat = this.secs((PPQ * 4) / p.beatUnit);
     const n = bars * p.beatsPerBar;
+    this.countInBeats = n;
     const start = this.anchorTime - n * beat;
     for (let i = 0; i < n; i++) this.click(start + i * beat, i % p.beatsPerBar === 0);
   }

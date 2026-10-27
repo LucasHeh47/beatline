@@ -3,7 +3,7 @@
 // history, the selection, the audio engine and the recorder, and tells the panels when things change.
 import { addClip, audioClip, patternClip } from '../core/arrange';
 import { History } from '../core/history';
-import { SYNTH_PRESETS } from '../core/instruments';
+import { instrumentParams } from '../core/instruments';
 import { readMidi } from '../core/midi';
 import {
   activePattern,
@@ -22,7 +22,7 @@ import {
   type Project,
   type Sample,
 } from '../core/project';
-import { templateById, TEMPLATES } from '../core/templates';
+import { instrumentChannel, templateById, TEMPLATES } from '../core/templates';
 import { encodeWav } from '../core/wav';
 import { AudioEngine, type PlayMode } from '../audio/engine';
 import { InputRecorder } from '../audio/recorder';
@@ -66,6 +66,8 @@ export interface Prefs {
   octave: number;
   countIn: number;
   metronome: boolean;
+  /** The metronome clicks all the way through recordings (even when it's off for playback). */
+  recordClick: boolean;
   /** Recording input. */
   inputDevice: string;
   inputChannel: 'left' | 'right' | 'stereo' | 'mono';
@@ -88,6 +90,7 @@ const DEFAULT_PREFS: Prefs = {
   octave: 4,
   countIn: 1,
   metronome: false,
+  recordClick: true,
   inputDevice: '',
   inputChannel: 'mono',
   monitor: true,
@@ -107,10 +110,23 @@ function shade(hex: string, amt: number): string {
 }
 
 /** A synth preset that suits a MIDI track's name ("Bass", "Piano"…). */
-function synthFor(name: string) {
+/** A General MIDI instrument for a MIDI track that didn't say which (guessed from its name). */
+function programFor(name: string): number {
   const n = name.toLowerCase();
-  const pick = /bass/.test(n) ? 'pluckBass' : /piano|keys|rhodes|ep/.test(n) ? 'ePiano' : /pad|string/.test(n) ? 'strings' : /lead|melody|synth/.test(n) ? 'lead' : /organ/.test(n) ? 'organ' : /bell|glock/.test(n) ? 'bell' : 'pluck';
-  return SYNTH_PRESETS.find((x) => x.id === pick) ?? SYNTH_PRESETS[0];
+  if (/bass/.test(n)) return 33;
+  if (/rhodes|\bep\b|e\.? ?piano|electric piano/.test(n)) return 4;
+  if (/piano|keys/.test(n)) return 0;
+  if (/organ/.test(n)) return 16;
+  if (/guitar|gtr/.test(n)) return /dist|lead|rock/.test(n) ? 30 : /elec|clean/.test(n) ? 27 : 25;
+  if (/string|violin|cello/.test(n)) return 48;
+  if (/pad/.test(n)) return 89;
+  if (/choir|vox|voice/.test(n)) return 52;
+  if (/brass|trumpet|horn/.test(n)) return 61;
+  if (/sax/.test(n)) return 65;
+  if (/flute/.test(n)) return 73;
+  if (/bell|glock/.test(n)) return 9;
+  if (/lead|melody|synth/.test(n)) return 81;
+  return 0;
 }
 
 export function isTyping(t: EventTarget | null = document.activeElement): boolean {
@@ -147,6 +163,11 @@ export class App {
   channel: string | null = null;
   /** Selected playlist clips. */
   clips = new Set<string>();
+  /**
+   * The take being recorded, drawn on the armed track as it grows: where it started (ticks) and the
+   * input's level along the way (tick, peak), for the current pass through the loop.
+   */
+  liveTake: { start: number; points: [number, number][] } | null = null;
   /** Playlist tracks armed for recording. */
   armed = new Set<string>();
   /** The mixer track shown in the effect panel. */
@@ -165,6 +186,7 @@ export class App {
     this.history.limit = this.settings.num('files.undoSteps');
     this.engine = new AudioEngine({ project: () => this.project });
     this.engine.metronome = this.prefs.metronome;
+    this.engine.recordClick = this.prefs.recordClick;
     this.engine.onStop = () => this.emit('transport', 'playhead');
     this.recorder = new InputRecorder(this.engine);
     this.recorder.offsetMs = this.prefs.latencyMs;
@@ -213,9 +235,24 @@ export class App {
     void this.updates.startup();
     this.startAutosave();
     this.startRecovery();
-    // The playhead and meters move while playing
+    // The playhead and meters move while playing; a recording grows on its track
     const frame = () => {
-      if (this.engine.playing) this.emit('playhead');
+      if (this.engine.playing) {
+        const take = this.liveTake;
+        if (take && !this.engine.countingIn) {
+          const at = this.engine.position;
+          const last = take.points[take.points.length - 1];
+          const loop = this.engine.loopRegion;
+          // Around the loop again: a new pass starts at the loop's start (the clock can also step back a
+          // hair when the sound card's delay estimate changes, which isn't a new pass)
+          if (last && loop && at < last[0] - (loop[1] - loop[0]) / 2) {
+            take.start = loop[0];
+            take.points = [];
+          }
+          if (!last || at >= last[0] || take.points.length === 0) take.points.push([at, this.recorder.level()]);
+        }
+        this.emit('playhead');
+      }
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
@@ -466,6 +503,14 @@ export class App {
     this.emit('transport');
   }
 
+  /** Whether the metronome clicks through recordings. */
+  setRecordClick(on: boolean): void {
+    this.engine.recordClick = on;
+    this.prefs.recordClick = on;
+    this.savePrefs();
+    this.emit('transport');
+  }
+
   // ---------- recording ----------
 
   /** Opens the chosen input if it isn't already. */
@@ -512,6 +557,7 @@ export class App {
       // No armed track: notes played on a keyboard go into the pattern
       this.keyboard.recordNotes = true;
       this.recording = true;
+      this.engine.recording = true;
       if (this.engine.mode !== 'pattern') this.setMode('pattern');
       await this.engine.play('pattern', this.engine.position, this.prefs.countIn);
       this.emit('transport');
@@ -527,14 +573,19 @@ export class App {
       return;
     }
     this.recording = true;
+    this.engine.recording = true;
     platform.keepAwake(true);
-    await this.engine.play('song', this.engine.position, this.prefs.countIn);
+    const from = this.engine.position;
+    this.liveTake = { start: from, points: [] };
+    await this.engine.play('song', from, this.prefs.countIn);
     this.emit('transport');
   }
 
   async stopRecording(): Promise<void> {
     if (!this.recording) return;
     this.recording = false;
+    this.engine.recording = false;
+    this.liveTake = null;
     if (this.keyboard.recordNotes) {
       this.keyboard.recordNotes = false;
       this.engine.stop();
@@ -679,9 +730,11 @@ export class App {
     let id = '';
     this.edit(`Import ${name}`, (p) => {
       const pt = newPattern(name.replace(/\.(mid|midi)$/i, '').slice(0, 30), nextColor(p.patterns.length + 6));
+      // Each track plays its own instrument from the library (drums on a drum kit)
       for (const t of file.tracks) {
-        const pre = synthFor(t.name);
-        const ch = addChannel(p, { name: t.name.slice(0, 24), kind: 'synth', synth: structuredClone(pre.params), preset: pre.id });
+        const ch = t.drums
+          ? addChannel(p, { name: t.name.slice(0, 24), kind: 'instrument', instrument: { ...instrumentParams(0), bank: 128 }, preset: 'gm:drums' })
+          : instrumentChannel(p, t.program ?? programFor(t.name), t.name.slice(0, 24));
         pt.notes[ch.id] = t.notes;
       }
       pt.length = Math.ceil(patternEnd(pt) / barTicks(p)) * barTicks(p);

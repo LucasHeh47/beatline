@@ -235,6 +235,13 @@ describe('files', () => {
     expect(back.tracks[0].name).toBe('Piano');
     expect(back.tracks[0].notes.map((x) => [x.key, x.start, x.length])).toEqual(notes.map((x) => [x.key, x.start, x.length]));
     expect(back.tracks[0].notes[1].vel).toBeCloseTo(0.5, 1);
+    // Instruments and drums survive the trip
+    const band = readMidi(writeMidi([{ name: 'Guitar', notes, program: 25 }, { name: 'Drums', notes: [n(36, 0)], drums: true }, { name: 'Lead', notes }], 120));
+    expect(band.tracks.map((t) => [t.name, t.program, !!t.drums])).toEqual([
+      ['Guitar', 25, false],
+      ['Drums', undefined, true],
+      ['Lead', undefined, false],
+    ]);
   });
 
   it('writes and reads WAV files', () => {

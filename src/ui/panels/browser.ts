@@ -1,9 +1,9 @@
-// The Browser: the built-in sounds (click to hear, double-click or drag to add), ready-made beats and
-// synth presets, your folders of samples (click to hear, drag onto the playlist or the channel rack),
+// The Browser: the built-in sounds (click to hear, double-click or drag to add), recorded instruments,
+// ready-made beats and synth presets, your folders of samples (click to hear, drag onto the playlist or the channel rack),
 // and what's in the project (patterns to drag into the song, audio files, missing files to find).
 import * as L from 'lucide';
 import { DRUM_PATTERNS } from '../../core/drumPatterns';
-import { DRUM_SOUNDS, SYNTH_PRESETS } from '../../core/instruments';
+import { DRUM_SOUNDS, GM_FAMILIES, GM_INSTRUMENTS, instrumentParams, SYNTH_PRESETS } from '../../core/instruments';
 import { clock } from '../../core/project';
 import type { MediaFileInfo, SampleFolder } from '../../shared/api';
 import type { App } from '../app';
@@ -24,7 +24,7 @@ export class BrowserPanel implements Panel {
   private tab: Tab = 'sounds';
   private folders: SampleFolder[] = [];
   private openFolders = new Set<string>();
-  private openGroups = new Set<string>(['Kicks', 'Snares & claps', 'Hi-hats & cymbals']);
+  private openGroups = new Set<string>(['Kicks', 'Snares & claps', 'Hi-hats & cymbals', 'inst:Piano']);
   private audio: HTMLAudioElement | null = null;
 
   constructor(private app: App) {
@@ -113,15 +113,40 @@ export class BrowserPanel implements Panel {
     });
   }
 
+  /** Plays a recorded instrument's note (a short chord for keys and the like) without a channel. */
+  private previewInstrument(program: number): void {
+    const app = this.app;
+    const sf = app.engine.library.sf;
+    const ctx = app.engine.ctx;
+    void ctx.resume();
+    void sf.prepare(0, program).then(() => {
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      g.connect(ctx.destination);
+      const at = ctx.currentTime + 0.02;
+      // Basses play low, everything else a C major chord
+      const keys = program >= 32 && program < 40 ? [36] : program >= 112 ? [60] : [60, 64, 67];
+      for (const key of keys) sf.voice(ctx, instrumentParams(program), key, 0.8, at, g)?.stop(at + 0.9);
+      setTimeout(() => g.disconnect(), 4000);
+    });
+  }
+
   private renderSounds(match: (s: string) => boolean): void {
     const app = this.app;
     const out: HTMLElement[] = [];
     const q = this.search.value.trim();
+    // Recorded instruments first: they're what most songs need
+    for (const fam of GM_FAMILIES) {
+      const items = GM_INSTRUMENTS.filter((g) => g.family === fam && match(`${g.name} ${fam} instrument`)).map((g) =>
+        this.item(g.name, L.Piano, { title: 'Click to hear; double-click to add it to the channel rack', click: () => this.previewInstrument(g.program), dbl: () => app.commands.run(`add.instrument.${g.program}`), drag: (dt) => dt.setData('text/beatline-instrument', String(g.program)) }),
+      );
+      out.push(...this.group(`inst:${fam}`, fam, L.Piano, items, !!q || this.openGroups.has(`inst:${fam}`)));
+    }
     for (const g of [...new Set(DRUM_SOUNDS.map((d) => d.group))]) {
       const items = DRUM_SOUNDS.filter((d) => d.group === g && match(`${d.name} ${g}`)).map((d) =>
         this.item(d.name, L.Drum, { title: 'Click to hear; double-click or drag to add it to the channel rack', click: () => this.previewDrum(d.id), dbl: () => app.commands.run(`add.drum.${d.id}`), drag: (dt) => dt.setData('text/beatline-drum', d.id) }),
       );
-      out.push(...this.group(g, g, L.Drum, items, !!q || this.openGroups.has(g)));
+      out.push(...this.group(g, g === 'Kicks' || g === 'Snares & claps' || g === 'Hi-hats & cymbals' || g === 'Percussion' || g === 'Bass' ? `Electronic: ${g}` : g, L.Drum, items, !!q || this.openGroups.has(g)));
     }
     for (const cat of ['Bass', 'Lead', 'Pad', 'Keys', 'Pluck', 'Other'] as const) {
       const items = SYNTH_PRESETS.filter((s) => s.category === cat && match(`${s.name} ${cat} synth`)).map((s) => this.item(s.name, L.Piano, { title: 'Double-click to add this synth', dbl: () => app.commands.run(`add.synth.${s.id}`) }));
@@ -224,7 +249,7 @@ export class BrowserPanel implements Panel {
     );
     out.push(...this.group('pp', 'Patterns', L.Grid3x3, patterns, true));
     out.push(h('button', { class: 'br-inline', onclick: () => app.newPattern() }, icon(L.Plus, 13), 'New pattern'));
-    const channels = p.channels.filter((c) => match(c.name)).map((c) => this.item(c.name, c.kind === 'synth' ? L.Piano : L.Drum, { cls: c.id === app.channel ? 'on' : '', click: () => app.selectChannel(c.id), dbl: () => {
+    const channels = p.channels.filter((c) => match(c.name)).map((c) => this.item(c.name, c.kind === 'sampler' ? L.Drum : L.Piano, { cls: c.id === app.channel ? 'on' : '', click: () => app.selectChannel(c.id), dbl: () => {
       app.selectChannel(c.id);
       app.layout.show('instrument');
     } }));

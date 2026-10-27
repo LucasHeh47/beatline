@@ -46,7 +46,8 @@ export async function showAbout(_app: App): Promise<void> {
     'div',
     null,
     h('p', null, `Version ${version}${version.includes('-') ? ' (development build)' : ''}. Make beats, write songs and record your guitar and vocals.`),
-    h('p', null, 'A step sequencer and piano roll with scales, chords and arpeggios; drums, synths and samplers built in; a playlist to arrange patterns and recordings; a mixer with EQ, compression, reverb, delay and guitar amps; recording with a tuner, metronome, count-in and takes; and exports to WAV, MP3 and more, with stems.'),
+    h('p', null, 'A step sequencer and piano roll with scales, chords and arpeggios; recorded instruments, drum kits, synths and samplers built in; a playlist to arrange patterns and recordings; a mixer with EQ, compression, reverb, delay and guitar amps; recording with a tuner, metronome, count-in and takes; and exports to WAV, MP3 and more, with stems.'),
+    h('p', { class: 'hint' }, 'Instruments from the FluidR3 Mono SoundFont (MIT license): FluidR3 © 2000–2002, 2008 Frank Wen; mono version © 2014–17 Michael Cowgill; adaptation © 2018 S. Christian Collins.'),
     h('p', { class: 'hint' }, 'Part of the same family as Gridline, Pixelline, Frameline and Baseline.'),
   );
   await dialog('About Beatline', body, [{ label: 'Close', value: true, primary: true }]);

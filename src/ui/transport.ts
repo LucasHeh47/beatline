@@ -136,9 +136,12 @@ export class Transport {
     const app = this.app;
     const p = app.project;
     const t = app.engine.position;
-    this.pos.textContent = barBeat(t, p);
-    this.time.textContent = clock(ticksToSeconds(t, p.bpm));
+    // During the count-in: the beats left before it starts
+    const left = app.engine.countInLeft;
+    this.pos.textContent = left ? `Count-in ${left}` : barBeat(t, p);
+    this.time.textContent = left ? 'Get ready…' : clock(ticksToSeconds(t, p.bpm));
     this.el.classList.toggle('recording', app.recording);
+    this.el.classList.toggle('counting', left > 0);
   }
 
   /** The master meter, while there's sound. */

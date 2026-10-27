@@ -637,7 +637,8 @@ export class PlaylistPanel implements Panel {
 
   private onPlayhead(): void {
     const app = this.app;
-    if (this.follow && app.engine.playing && app.mode === 'song' && !this.drag) {
+    // A recording always keeps its playhead in view
+    if ((this.follow || app.recording) && app.engine.playing && app.mode === 'song' && !this.drag) {
       const x = this.x(app.engine.position);
       const w = this.canvas.clientWidth;
       if (x > w - 40 || x < 0) this.scrollX = Math.max(0, app.engine.position - 40 / this.ppt);
@@ -710,14 +711,35 @@ export class PlaylistPanel implements Panel {
         this.drawClip(ctx, k, t, x, y + 2, w, ROW_H - 4, col);
       }
     });
-    // Recording in progress
-    if (app.recording && app.engine.playing && !app.keyboard.recordNotes) {
+    // Recording in progress: the take grows on its track, with the input's waveform
+    const take = app.liveTake;
+    if (app.recording && app.engine.playing && !app.keyboard.recordNotes && take) {
       const row = p.tracks.findIndex((t) => app.armed.has(t.id));
-      if (row >= 0) {
-        const y = this.rowY(row);
-        const x = this.x(app.engine.position);
-        ctx.fillStyle = 'rgba(229, 56, 59, 0.35)';
-        ctx.fillRect(Math.max(0, x - 6), y + 2, 6, ROW_H - 4);
+      const x0 = this.x(take.start);
+      const x1 = this.x(app.engine.position);
+      if (row >= 0 && x1 > x0 + 1) {
+        const y = this.rowY(row) + 2;
+        const hh = ROW_H - 4;
+        ctx.fillStyle = 'rgba(229, 56, 59, 0.3)';
+        ctx.fillRect(x0, y, x1 - x0, hh);
+        ctx.strokeStyle = 'rgba(229, 56, 59, 0.9)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x0 + 0.5, y + 0.5, x1 - x0 - 1, hh - 1);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        const mid = y + hh / 2 + 6;
+        const half = (hh - 18) / 2;
+        let lastX = -Infinity;
+        for (const [t, level] of take.points) {
+          const x = this.x(t);
+          if (x < Math.max(0, lastX + 1) || x > W) continue;
+          lastX = x;
+          const v = Math.max(0.5, Math.min(1, level) * half);
+          ctx.fillRect(x, mid - v, 1, v * 2);
+        }
+        ctx.fillStyle = '#fff';
+        ctx.font = '600 11px "Segoe UI", sans-serif';
+        ctx.textBaseline = 'top';
+        ctx.fillText('● Recording', Math.max(x0, 0) + 5, y + 3, Math.max(10, x1 - Math.max(x0, 0) - 8));
       }
     }
     // Where a drop would go
@@ -770,7 +792,7 @@ export class PlaylistPanel implements Panel {
         ctx.fill();
       }
     }
-    if (!p.tracks.some((t) => t.clips.length)) {
+    if (!p.tracks.some((t) => t.clips.length) && !app.recording) {
       ctx.fillStyle = col('--text-muted');
       ctx.font = '13px "Segoe UI", sans-serif';
       ctx.textBaseline = 'top';

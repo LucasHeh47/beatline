@@ -4,10 +4,10 @@ import * as L from 'lucide';
 import type { IconNode } from 'lucide';
 import { deletePattern, nextPatternName } from '../core/arrange';
 import { DRUM_PATTERNS } from '../core/drumPatterns';
-import { DRUM_SOUNDS, SYNTH_PRESETS } from '../core/instruments';
+import { DRUM_SOUNDS, GM_INSTRUMENTS, SYNTH_PRESETS } from '../core/instruments';
 import { writeMidi } from '../core/midi';
 import { addAudioTrack, barTicks, nextColor, secondsToTicks, songEnd, uid } from '../core/project';
-import { applyDrumPattern, drumChannel, synthChannel } from '../core/templates';
+import { applyDrumPattern, drumChannel, instrumentChannel, synthChannel } from '../core/templates';
 import type { App } from './app';
 import { openExport } from './dialogs/export';
 import { openProgression } from './dialogs/progression';
@@ -151,7 +151,9 @@ export class Commands {
     a({ id: 'file.importMidi', title: 'Import MIDI…', category: 'File', icon: L.FileMusic, keywords: 'mid notes', run: () => app.importMidi() });
     a({ id: 'file.exportMidi', title: 'Export pattern as MIDI…', category: 'File', icon: L.FileMusic, keywords: 'mid notes', run: async () => {
       const pt = app.pattern;
-      const tracks = p().channels.map((c) => ({ name: c.name, notes: pt.notes[c.id] ?? [] })).filter((t) => t.notes.length);
+      const tracks = p()
+        .channels.map((c) => ({ name: c.name, notes: pt.notes[c.id] ?? [], program: c.kind === 'instrument' && c.instrument?.bank !== 128 ? c.instrument?.program : undefined, drums: c.kind === 'instrument' && c.instrument?.bank === 128 }))
+        .filter((t) => t.notes.length);
       if (!tracks.length) return toast('The pattern has no notes to export.');
       const path = await platform.saveDialog(`${pt.name}.mid`, 'mid');
       if (!path) return;
@@ -194,6 +196,14 @@ export class Commands {
         app.edit(`Add ${s.name}`, (x) => void (id = synthChannel(x, s.id).id));
         app.selectChannel(id);
         app.layout.show('pianoRoll');
+      } });
+    for (const g of GM_INSTRUMENTS)
+      a({ id: `add.instrument.${g.program}`, title: `Add ${g.name}`, category: 'Add', icon: L.Piano, keywords: `instrument recorded real ${g.family}`, run: () => {
+        let id = '';
+        app.edit(`Add ${g.name}`, (x) => void (id = instrumentChannel(x, g.program).id));
+        app.selectChannel(id);
+        app.layout.show('pianoRoll');
+        app.engine.preview(id, 60, 0.8, 0.6);
       } });
     for (const d of DRUM_PATTERNS)
       a({ id: `add.beat.${d.id}`, title: `Beat: ${d.name}`, category: 'Add', icon: L.Grid3x3, keywords: 'drum pattern preset groove', run: () => {

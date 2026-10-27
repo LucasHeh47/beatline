@@ -44,6 +44,10 @@ const webFallback: Omit<BeatlineApi, 'isDesktop'> & { isDesktop: boolean } = {
   platform: 'web',
   isDesktop: false,
   mediaUrl: (p) => blobs.get(p) ?? p,
+  readSoundFont: async () => {
+    const res = await fetch('soundfonts/FluidR3Mono_GM.sf3');
+    return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+  },
   importDialog: async () => (await pick('audio/*', true)).map(asInfo),
   droppedFiles: async (list) => list.map(asInfo),
   checkMedia: async (paths) => Object.fromEntries(paths.map((p) => [p, blobs.has(p) ? { path: p, name: p.slice(9), size: 0, modified: 0 } : null])),

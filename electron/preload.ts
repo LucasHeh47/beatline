@@ -6,6 +6,7 @@ const api: BeatlineApi = {
   platform: process.platform,
   isDesktop: true,
   mediaUrl: (p) => `media://file/${encodeURIComponent(p)}`,
+  readSoundFont: () => ipcRenderer.invoke('soundfont:read'),
   importDialog: () => ipcRenderer.invoke('media:import-dialog'),
   droppedFiles: (files) => ipcRenderer.invoke('media:dropped', files.map((f) => webUtils.getPathForFile(f)).filter(Boolean)),
   checkMedia: (paths) => ipcRenderer.invoke('media:check', paths),

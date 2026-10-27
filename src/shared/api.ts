@@ -36,6 +36,8 @@ export interface SampleFolder {
 }
 
 export interface BeatlineApi {
+  /** The instrument library (the General MIDI SoundFont that comes with Beatline). */
+  readSoundFont(): Promise<Uint8Array | null>;
   platform: string;
   isDesktop: true;
   /** The address the UI loads an audio file from. */

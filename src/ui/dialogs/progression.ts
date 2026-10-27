@@ -2,7 +2,8 @@
 // played (held, on every beat, or arpeggiated) and an instrument — they're written into a pattern,
 // with a bass line if you like.
 import { addChannel, barTicks, newPattern, nextColor, PPQ, type Note } from '../../core/project';
-import { SYNTH_PRESETS, synthPreset } from '../../core/instruments';
+import { gmInstrument, SYNTH_PRESETS, synthPreset } from '../../core/instruments';
+import { instrumentChannel } from '../../core/templates';
 import { chordOnDegree, NOTE_NAMES, PROGRESSIONS, progressionNotes, SCALES } from '../../core/theory';
 import type { App } from '../app';
 import { h } from '../dom';
@@ -19,10 +20,16 @@ export async function openProgression(app: App): Promise<void> {
   const style = select<'block' | 'stabs' | 'arp'>([['block', 'Held'], ['stabs', 'On every beat'], ['arp', 'Arpeggiated']], 'block');
   const sevenths = checkbox('Richer chords (sevenths)', false);
   const bass = checkbox('Add a bass line', true);
-  const synths = p.channels.filter((c) => c.kind === 'synth');
+  const synths = p.channels.filter((c) => c.kind === 'synth' || c.kind === 'instrument');
+  // Recorded keys, guitars and strings, then the synths
+  const real = [0, 4, 16, 24, 25, 48, 49, 52].map((n) => gmInstrument(n));
   const instrument = select(
-    [...synths.map((c) => [`c:${c.id}`, c.name] as [string, string]), ...SYNTH_PRESETS.filter((s) => ['Keys', 'Pad', 'Pluck'].includes(s.category)).map((s) => [`n:${s.id}`, `New ${s.name}`] as [string, string])],
-    synths[0] ? `c:${synths[0].id}` : 'n:ePiano',
+    [
+      ...synths.map((c) => [`c:${c.id}`, c.name] as [string, string]),
+      ...real.map((g) => [`g:${g.program}`, `New ${g.name}`] as [string, string]),
+      ...SYNTH_PRESETS.filter((s) => ['Keys', 'Pad', 'Pluck'].includes(s.category)).map((s) => [`n:${s.id}`, `New ${s.name} (synth)`] as [string, string]),
+    ],
+    synths[0] ? `c:${synths[0].id}` : 'g:0',
   );
   // Picking a progression made for minor keys switches the scale
   prog.addEventListener('change', () => {
@@ -59,7 +66,7 @@ export async function openProgression(app: App): Promise<void> {
     if (instrument.value.startsWith('n:')) {
       const pre = synthPreset(chId)!;
       chId = addChannel(x, { name: pre.name, kind: 'synth', synth: structuredClone(pre.params), preset: pre.id }).id;
-    }
+    } else if (instrument.value.startsWith('g:')) chId = instrumentChannel(x, Number(chId)).id;
     const pt = newPattern(`${progression.name} chords`, nextColor(x.patterns.length + 6));
     pt.notes[chId] = notes;
     if (bass.input.checked) {

@@ -106,7 +106,8 @@ export class RecordPanel implements Panel {
       prefs.countIn = Number(countIn.value);
       app.savePrefs();
     });
-    const metro = h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: app.engine.metronome, onchange: (e: Event) => app.setMetronome((e.target as HTMLInputElement).checked) }), h('span', null, 'Metronome'));
+    const metro = h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: prefs.recordClick, onchange: (e: Event) => app.setRecordClick((e.target as HTMLInputElement).checked) }), h('span', null, 'Metronome while recording'));
+    tooltip(metro, 'Clicks on every beat from the count-in to the end of the take (whether or not the metronome is on for playback)');
     const armed = p.tracks.find((t) => app.armed.has(t.id));
     const quick = (label: string, ic: L.IconNode, chain: string) =>
       h('button', { class: 'btn small outline', onclick: async () => {

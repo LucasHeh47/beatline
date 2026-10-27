@@ -215,6 +215,15 @@ const safeName = (n: string) => path.basename(String(n)).replace(/[<>:"/\\|?*\x0
 
 // ---------- IPC ----------
 
+/** The instrument library that comes with Beatline (read once per window). */
+ipcMain.handle('soundfont:read', async () => {
+  try {
+    return new Uint8Array(await fs.readFile(path.join(__dirname, '..', 'dist', 'soundfonts', 'FluidR3Mono_GM.sf3')));
+  } catch {
+    return null;
+  }
+});
+
 ipcMain.handle('media:import-dialog', async (e) => {
   const res = await dialog.showOpenDialog(senderWindow(e)!, { title: 'Import audio', properties: ['openFile', 'multiSelections'], filters: AUDIO_FILTERS });
   if (res.canceled) return [];

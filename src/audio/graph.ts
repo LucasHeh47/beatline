@@ -5,6 +5,7 @@ import type { AudioEvent } from '../core/sequence';
 import type { Channel, Effect, MixerTrack, Project } from '../core/project';
 import { buildEffect, type FxNode } from './effects';
 import type { SampleLibrary } from './library';
+import type { InstrumentVoice } from './soundfont';
 import { samplerVoice, synthVoice, type Voice } from './voices';
 
 const db = (v: number) => (v <= -80 ? 0 : Math.pow(10, v / 20));
@@ -222,6 +223,11 @@ export class Graph {
         }
       }
       v = synthVoice(this.ctx, c.synth, key, vel, at, strip.input, from);
+    } else if (c.kind === 'instrument' && c.instrument) {
+      const iv = this.library.sf.voice(this.ctx, c.instrument, key, vel, at, strip.input);
+      // A drum kit's hi-hats (and the like) cut each other off
+      if (iv?.cls) for (const ov of list) if ((ov as InstrumentVoice).cls === iv.cls && ov.end > at) ov.kill(at);
+      v = iv;
     }
     if (!v) return null;
     if (Number.isFinite(length)) v.stop(at + length);

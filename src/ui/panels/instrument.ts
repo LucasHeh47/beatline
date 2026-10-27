@@ -1,9 +1,10 @@
-// Channel settings: the selected channel's sound. A synth (presets, two oscillators with unison and FM,
-// noise, a filter with its envelope, the volume envelope, an LFO, glide) or a sampler (a drum sound or
-// a sample, its pitch, envelope, reverse and choke group). A small keyboard to try it.
+// Channel settings: the selected channel's sound. A recorded instrument (which one, its level, tuning,
+// tone and how long notes ring), a synth (presets, two oscillators with unison and FM, noise, a filter
+// with its envelope, the volume envelope, an LFO, glide) or a sampler (a drum sound or a sample, its
+// pitch, envelope, reverse and choke group). A small keyboard to try it.
 import * as L from 'lucide';
-import { DRUM_SOUNDS, SYNTH_PRESETS, synthPreset } from '../../core/instruments';
-import { CHANNEL_VOLUME, type Channel, type Env, type Osc, type Project, type SamplerParams, type SynthParams, type Wave } from '../../core/project';
+import { DRUM_SOUNDS, GM_FAMILIES, GM_INSTRUMENTS, gmInstrument, SYNTH_PRESETS, synthPreset } from '../../core/instruments';
+import { CHANNEL_VOLUME, type Channel, type Env, type InstrumentParams, type Osc, type Project, type SamplerParams, type SynthParams, type Wave } from '../../core/project';
 import { isBlackKey, noteName } from '../../core/theory';
 import type { App } from '../app';
 import { fmtDb, fmtHz, fmtPan, fmtPct, fmtSecs, knob } from '../controls';
@@ -58,9 +59,47 @@ export class InstrumentPanel implements Panel {
     route.value = c.mixer;
     route.addEventListener('change', () => app.edit('Channel routing', (p) => void (this.ch(p).mixer = route.value)));
     tooltip(route, 'The mixer track it plays through (for its effects)');
-    const head = h('div', { class: 'inst-head' }, name, h('span', { class: 'inst-kind' }, c.kind === 'synth' ? 'Synth' : 'Sampler'), h('span', { class: 'spacer' }), h('label', { class: 'fx-choice' }, h('span', null, 'Mixer'), route), pan, vol);
-    const body = c.kind === 'synth' && c.synth ? this.synth(c, c.synth) : c.sampler ? this.sampler(c, c.sampler) : h('div');
+    const kind = c.kind === 'synth' ? 'Synth' : c.kind === 'instrument' ? 'Instrument' : 'Sampler';
+    const head = h('div', { class: 'inst-head' }, name, h('span', { class: 'inst-kind' }, kind), h('span', { class: 'spacer' }), h('label', { class: 'fx-choice' }, h('span', null, 'Mixer'), route), pan, vol);
+    const body = c.kind === 'instrument' && c.instrument ? this.instrument(c, c.instrument) : c.kind === 'synth' && c.synth ? this.synth(c, c.synth) : c.sampler ? this.sampler(c, c.sampler) : h('div');
     this.el.replaceChildren(head, body, this.keys(c));
+  }
+
+  // ---------- a recorded instrument ----------
+
+  private instrument(c: Channel, s: InstrumentParams): HTMLElement {
+    const app = this.app;
+    const ins = (p: Project) => this.ch(p).instrument!;
+    const k = (label: string, min: number, max: number, value: number, def: number, set: (s: InstrumentParams, v: number) => void, o: { step?: number; log?: boolean; format?: (v: number) => string; title?: string } = {}) =>
+      knob({ label, min, max, value, def, step: o.step, log: o.log, format: o.format, title: o.title, size: 34, ...app.turning(`${c.name}: ${label.toLowerCase()}`, (p, v) => set(ins(p), v)) });
+    const pick = h('select', { class: 'input', 'aria-label': 'Instrument' }, ...GM_FAMILIES.map((fam) => h('optgroup', { label: fam }, ...GM_INSTRUMENTS.filter((g) => g.family === fam).map((g) => h('option', { value: String(g.program) }, g.name))))) as HTMLSelectElement;
+    pick.value = String(s.program);
+    pick.addEventListener('change', () => {
+      const g = gmInstrument(Number(pick.value));
+      app.edit(`Instrument: ${g.name}`, (p) => {
+        const ch = this.ch(p);
+        // A channel still named after its instrument takes the new one's name
+        if (ch.name === gmInstrument(ch.instrument!.program).name) ch.name = g.name;
+        ch.instrument!.program = g.program;
+        ch.preset = `gm:${g.program}`;
+      });
+      void app.engine.library.sf.prepare(0, g.program).then(() => app.engine.preview(c.id, 60, 0.8, 0.6));
+    });
+    const sf = app.engine.library.sf;
+    const status = sf.error ? h('span', { class: 'hint error' }, `The instrument library couldn't be loaded: ${sf.error}`) : h('span', { class: 'hint' }, 'Recorded from real instruments. For more space, add a reverb on its mixer track.');
+    return h(
+      'div',
+      { class: 'inst-body' },
+      h('div', { class: 'inst-row' }, h('label', { class: 'fx-choice' }, h('span', null, 'Instrument'), pick), status),
+      h('div', { class: 'inst-grid' },
+        h('div', { class: 'inst-group' }, h('div', { class: 'inst-group-head' }, 'Sound'), h('div', { class: 'inst-knobs' },
+          k('Gain', -24, 12, s.gain, 0, (x, v) => void (x.gain = v), { step: 0.5, format: fmtDb }),
+          k('Tune', -24, 24, s.tune, 0, (x, v) => void (x.tune = v), { step: 0.01, format: (v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} st`, title: 'Semitones: transposes every note' }),
+          k('Tone', 300, 20000, s.tone, 20000, (x, v) => void (x.tone = v), { log: true, format: (v) => (v >= 19000 ? 'Open' : fmtHz(v)), title: 'Turn down for a darker, softer sound' }),
+          k('Release', 0.1, 4, s.release, 1, (x, v) => void (x.release = v), { log: true, format: (v) => `×${v.toFixed(2)}`, title: 'How long notes ring on after you let go: ×1 is as recorded' }),
+        )),
+      ),
+    );
   }
 
   // ---------- the synth ----------

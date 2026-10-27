@@ -110,7 +110,7 @@ export function openPalette(app: App, initial = ''): void {
     }
     for (const ch of p.channels) {
       const m = fuzzy(q, ch.name);
-      if (m) out.push({ label: `Channel: ${ch.name}`, category: 'Channels', icon: ch.kind === 'synth' ? L.Piano : L.Drum, score: m.score + 8, marks: m.marks.map((i) => i + 'Channel: '.length), run: () => {
+      if (m) out.push({ label: `Channel: ${ch.name}`, category: 'Channels', icon: ch.kind === 'sampler' ? L.Drum : L.Piano, score: m.score + 8, marks: m.marks.map((i) => i + 'Channel: '.length), run: () => {
         app.selectChannel(ch.id);
         app.layout.show('instrument');
       } });

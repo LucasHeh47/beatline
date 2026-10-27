@@ -3,7 +3,7 @@
 // their notes in miniature (click to open them in the piano roll).
 import * as L from 'lucide';
 import { DRUM_PATTERNS } from '../../core/drumPatterns';
-import { DRUM_SOUNDS, SYNTH_PRESETS } from '../../core/instruments';
+import { DRUM_SOUNDS, GM_FAMILIES, GM_INSTRUMENTS, SYNTH_PRESETS } from '../../core/instruments';
 import { fillSteps, isMelodic, stepsOf, toggleStep } from '../../core/notes';
 import { barTicks, CHANNEL_VOLUME, STEP, uid, type Channel } from '../../core/project';
 import { deleteChannel } from '../../core/arrange';
@@ -35,7 +35,7 @@ export class ChannelRack implements Panel {
     // Audio files dropped on the rack become sampler channels
     this.el.addEventListener('dragover', (e) => {
       const t = e.dataTransfer?.types ?? [];
-      if (t.includes('Files') || t.includes('text/beatline-sample') || t.includes('text/beatline-file') || t.includes('text/beatline-drum')) {
+      if (t.includes('Files') || t.includes('text/beatline-sample') || t.includes('text/beatline-file') || t.includes('text/beatline-drum') || t.includes('text/beatline-instrument')) {
         e.preventDefault();
         this.el.classList.add('drop');
       }
@@ -46,6 +46,12 @@ export class ChannelRack implements Panel {
       const sid = e.dataTransfer?.getData('text/beatline-sample');
       const builtin = e.dataTransfer?.getData('text/beatline-drum');
       const file = e.dataTransfer?.getData('text/beatline-file');
+      const program = e.dataTransfer?.getData('text/beatline-instrument');
+      if (program) {
+        e.preventDefault();
+        app.commands.run(`add.instrument.${program}`);
+        return;
+      }
       if (!sid && !builtin && !file && !e.dataTransfer?.files.length) return;
       e.preventDefault();
       if (builtin) return this.addDrum(builtin);
@@ -66,13 +72,14 @@ export class ChannelRack implements Panel {
     this.app.engine.preview(ch, 60);
   }
 
-  /** The menu for adding a channel: drums, synths, a sample file. */
+  /** The menu for adding a channel: instruments, drums, synths, a sample file. */
   addMenu(at: HTMLElement): void {
     const app = this.app;
     const groups = [...new Set(DRUM_SOUNDS.map((d) => d.group))];
     const cats = [...new Set(SYNTH_PRESETS.map((s) => s.category))];
     showMenu(
       [
+        { label: 'Instruments (piano, guitar, strings…)', icon: L.Piano, submenu: () => GM_FAMILIES.map((f) => ({ label: f, submenu: () => GM_INSTRUMENTS.filter((g) => g.family === f).map((g) => ({ label: g.name, run: () => app.commands.run(`add.instrument.${g.program}`) })) })) },
         { label: 'Drums and percussion', icon: L.Drum, submenu: () => groups.map((g) => ({ label: g, submenu: () => DRUM_SOUNDS.filter((d) => d.group === g).map((d) => ({ label: d.name, run: () => this.addDrum(d.id) })) })) },
         { label: 'Synths', icon: L.Piano, submenu: () => cats.map((c) => ({ label: c, submenu: () => SYNTH_PRESETS.filter((s) => s.category === c).map((s) => ({ label: s.name, run: () => app.commands.run(`add.synth.${s.id}`) })) })) },
         { label: 'Sample from a file…', icon: L.FileAudio, run: async () => {
@@ -106,7 +113,7 @@ export class ChannelRack implements Panel {
     const beats = h('button', { class: 'btn small outline', onclick: (e: MouseEvent) => showMenu(DRUM_PATTERNS.map((d) => ({ label: `${d.name} · ${d.bpm} BPM`, run: () => app.commands.run(`add.beat.${d.id}`) })), e.currentTarget as HTMLElement) }, icon(L.Grid3x3, 14), 'Beats');
     tooltip(beats, 'Ready-made drum beats in many styles');
     const add = h('button', { class: 'btn small primary', onclick: (e: MouseEvent) => this.addMenu(e.currentTarget as HTMLElement) }, icon(L.Plus, 14), 'Add');
-    tooltip(add, 'Add a drum, a synth or a sample');
+    tooltip(add, 'Add an instrument, a drum, a synth or a sample');
     const prog = h('button', { class: 'btn small outline', onclick: () => app.commands.run('add.progression') }, icon(L.ListMusic, 14), 'Chords');
     tooltip(prog, 'Write a chord progression in your key');
     this.bar.replaceChildren(patSel, lenSel, swing, h('span', { class: 'spacer' }), beats, prog, add);
